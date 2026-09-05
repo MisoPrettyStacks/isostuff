@@ -1,0 +1,16 @@
+json{
+  "name": "latent-thermo-trading",
+  "version": "1.0.0",
+  "description": "Thermodynamic microstructure mapping and VAE-driven multi-agent framework",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0"
+  },
+  "devDependencies": {},
+  "license": "MIT"
+}
