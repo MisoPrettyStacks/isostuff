@@ -1,13 +1,13 @@
 import * as tf from '@tensorflow/tfjs';
 
-// ============================================================================
-// THERMODYNAMICALLY REGULARIZED VAE IN TENSORFLOW.JS
-// ============================================================================
-
-class LatentDiscoveryTFVAE {
+/**
+ * Latent Discovery Engine: A Deep Variational Autoencoder implemented via TensorFlow.js
+ * that compresses Level-2 microstructure profiles into continuous 'Undiscovered Dimensions'.
+ */
+export class LatentDiscoveryTFVAE {
     /**
-     * @param {number} inputDim - Number of order book features (e.g., 40)
-     * @param {number} latentDim - Hidden dimensions to discover (e.g., 3)
+     * @param {number} inputDim - Total input dimensions from order book mapping (e.g., 40)
+     * @param {number} latentDim - Dimensions of the hidden orthogonal space Z (e.g., 3)
      */
     constructor(inputDim = 40, latentDim = 3) {
         this.inputDim = inputDim;
@@ -15,29 +15,36 @@ class LatentDiscoveryTFVAE {
         this.buildArchitecture();
     }
 
+    /**
+     * Builds and configures the standard Encoder and Decoder sequential networks.
+     */
     buildArchitecture() {
-        // --- Encoder Network ---
+        // --- Encoder sub-network (q_phi(z|x)) ---
         const encoderInput = tf.input({ shape: [this.inputDim] });
         let h = tf.layers.dense({ units: 128, activation: 'silu' }).apply(encoderInput);
         h = tf.layers.layerNormalization().apply(h);
         h = tf.layers.dense({ units: 64, activation: 'silu' }).apply(h);
         
-        const mu = tf.layers.dense({ units: this.latentDim, name: 'mu' }).apply(h);
-        const logVar = tf.layers.dense({ units: this.latentDim, name: 'logvar' }).apply(h);
+        const mu = tf.layers.dense({ units: this.latentDim, name: 'mu_layer' }).apply(h);
+        const logVar = tf.layers.dense({ units: this.latentDim, name: 'logvar_layer' }).apply(h);
         
         this.encoder = tf.model({ inputs: encoderInput, outputs: [mu, logVar] });
 
-        // --- Decoder Network ---
+        // --- Decoder sub-network (p_theta(x|z)) ---
         const decoderInput = tf.input({ shape: [this.latentDim] });
         let d = tf.layers.dense({ units: 64, activation: 'silu' }).apply(decoderInput);
         d = tf.layers.dense({ units: 128, activation: 'silu' }).apply(d);
-        const reconX = tf.layers.dense({ units: this.inputDim }).apply(d);
+        const reconX = tf.layers.dense({ units: this.inputDim, name: 'reconstruction_layer' }).apply(d);
         
         this.decoder = tf.model({ inputs: decoderInput, outputs: reconX });
     }
 
     /**
      * Reparameterization Trick: z = mu + sigma * epsilon
+     * Allows backpropagation through stochastic latent bottlenecks.
+     * @param {tf.Tensor2D} mu 
+     * @param {tf.Tensor2D} logVar 
+     * @returns {tf.Tensor2D} Latent coordinate space tensor Z
      */
     reparameterize(mu, logVar) {
         return tf.tidy(() => {
@@ -48,8 +55,8 @@ class LatentDiscoveryTFVAE {
     }
 
     /**
-     * Executes a forward training or inference pass.
-     * @param {tf.Tensor2D} x - Raw input order book snapshots tensor
+     * Computes a full forward execution graph transformation.
+     * @param {tf.Tensor2D} x - Level-2 snapshot sample batch tensor
      */
     forward(x) {
         return tf.tidy(() => {
@@ -59,67 +66,4 @@ class LatentDiscoveryTFVAE {
             return { reconX, z, mu, logVar };
         });
     }
-
-    /**
-     * Custom Physics-Informed VAE Loss Function
-     */
-    calculateLoss(x, reconX, mu, logVar, avgTemperature) {
-        return tf.tidy(() => {
-            // Reconstruction Accuracy (MSE)
-            const reconLoss = tf.losses.meanSquaredError(x, reconX);
-
-            // Kullback-Leibler Divergence
-            const kld = tf.mean(
-                tf.sum(
-                    tf.scalar(1.0)
-                        .add(logVar)
-                        .sub(tf.square(mu))
-                        .sub(tf.exp(logVar)),
-                    1
-                ).mul(-0.5)
-            );
-
-            // Thermodynamic Variance Consistency: Hidden energy variance scales with market temp
-            const latentVariance = tf.moments(mu, 0).variance.sum();
-            const thermoTarget = tf.scalar(avgTemperature);
-            const thermoPenalty = tf.losses.meanSquaredError(thermoTarget, latentVariance);
-
-            // Total integrated structural loss
-            return reconLoss.add(kld.mul(0.01)).add(thermoPenalty.mul(0.1));
-        });
-    }
 }
-
-// ============================================================================
-// PIPELINE VERIFICATION EXECUTION
-// ============================================================================
-(async () => {
-    // Wait for the WebGL/WASM backend to initialize
-    await tf.ready();
-    console.log(`Using active computational backend: ${tf.getBackend()}`);
-
-    const batchSize = 4;
-    const inputDim = 40;
-    const latentDim = 3;
-
-    const vaeEngine = new LatentDiscoveryTFVAE(inputDim, latentDim);
-    
-    // Simulate fake market data snapshot batch tensor
-    const simulatedMarketBatch = tf.randomUniform([batchSize, inputDim]);
-    const mockAverageTemperature = 0.42;
-
-    // Run forward computational graph execution
-    const outputs = vaeEngine.forward(simulatedMarketBatch);
-    const executionLoss = vaeEngine.calculateLoss(
-        simulatedMarketBatch, 
-        outputs.reconX, 
-        outputs.mu, 
-        outputs.logVar, 
-        mockAverageTemperature
-    );
-
-    executionLoss.print(); // Displays training optimization step loss
-
-    // Memory cleanup metrics verification
-    tf.dispose([simulatedMarketBatch, outputs.reconX, outputs.z, outputs.mu, outputs.logVar, executionLoss]);
-})();
